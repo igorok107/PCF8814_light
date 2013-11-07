@@ -3,34 +3,50 @@
 //  Author(s)...: Chiper
 //  Porting.....: Igorok107
 //  URL(s)......: http://digitalchip.ru
-//  Description.: Драйвер LCD-контроллера от Nokia1100 с графическими функциями
-//  Data........: 02.11.13
-//  Version.....: 2.1.0
+//  Description.: Р”СЂР°Р№РІРµСЂ LCD-РєРѕРЅС‚СЂРѕР»Р»РµСЂР° РѕС‚ Nokia1100 СЃ РіСЂР°С„РёС‡РµСЃРєРёРјРё С„СѓРЅРєС†РёСЏРјРё
+//  Data........: 07.11.13
+//  Version.....: 2.2.0
 //***************************************************************************
 #ifndef PCF8814_H
 #define PCF8814_H
 
-#include "Arduino.h"
+#if defined(ARDUINO) && ARDUINO >= 100
+	#include "Arduino.h"
+#else
+	#include "WProgram.h"
+	#include "pins_arduino.h"
+#endif
 //******************************************************************************
 //******************************************************************************
-// Применять полный набор символов. 
+// РџСЂРёРјРµРЅСЏС‚СЊ РїРѕР»РЅС‹Р№ РЅР°Р±РѕСЂ СЃРёРјРІРѕР»РѕРІ. 
 #define FULL_CHARSET 
 
-// *****!!!!! Минимальная задержка, при которой работает LCD-контроллер
-#define LCD_MIN_DELAY	4
-// *****!!!!! Подбирается экспериментально под конкретный контроллер
+//******************************************************************************
+//#define SOFT_SPI // Р’РєР»СЋС‡РµРЅРёРµ РїСЂРѕРіСЂР°РјРЅРѕРіРѕ SPI, РµСЃР»Рё LCD РЅРµ СЃРїСЂР°РІР»СЏРµС‚СЃСЏ СЃРѕ СЃРєРѕСЂРѕСЃС‚СЊСЋ
+//#define LCD_MIN_DELAY	100 // *****!!!!! РњРёРЅРёРјР°Р»СЊРЅР°СЏ Р·Р°РґРµСЂР¶РєР°, РїСЂРё РєРѕС‚РѕСЂРѕР№ СЂР°Р±РѕС‚Р°РµС‚ LCD-РєРѕРЅС‚СЂРѕР»Р»РµСЂ
+// *****!!!!! РџРѕРґР±РёСЂР°РµС‚СЃСЏ СЌРєСЃРїРµСЂРёРјРµРЅС‚Р°Р»СЊРЅРѕ РїРѕРґ РєРѕРЅРєСЂРµС‚РЅС‹Р№ РєРѕРЅС‚СЂРѕР»Р»РµСЂ
 
-// Макросы, определения, служебные переменные
-#define SCLK_LCD_SET    digitalWrite(LCD_SCLK,HIGH)
-#define SDA_LCD_SET     digitalWrite(LCD_SDA,HIGH)
-#define CS_LCD_SET      digitalWrite(LCD_CS,HIGH)
+// РњР°РєСЂРѕСЃС‹, РѕРїСЂРµРґРµР»РµРЅРёСЏ, СЃР»СѓР¶РµР±РЅС‹Рµ РїРµСЂРµРјРµРЅРЅС‹Рµ
 #define RST_LCD_SET     digitalWrite(LCD_RST,HIGH)
-#define SCLK_LCD_RESET  digitalWrite(LCD_SCLK,LOW)
-#define SDA_LCD_RESET   digitalWrite(LCD_SDA,LOW)
-#define CS_LCD_RESET    digitalWrite(LCD_CS,LOW)
 #define RST_LCD_RESET   digitalWrite(LCD_RST,LOW)
+#ifdef SOFT_SPI
+	#define SCLK_LCD_SET    digitalWrite(LCD_SCLK,HIGH)
+	#define SDA_LCD_SET     digitalWrite(LCD_SDA,HIGH)
+	#define CS_LCD_SET      digitalWrite(LCD_CS,HIGH)
+	#define SCLK_LCD_RESET  digitalWrite(LCD_SCLK,LOW)
+	#define SDA_LCD_RESET   digitalWrite(LCD_SDA,LOW)
+	#define CS_LCD_RESET    digitalWrite(LCD_CS,LOW)
+#else
+	#define SPI_CLOCK_DIV	0x01 // Р”РµР»РёС‚РµР»СЊ SPI, РѕРїСЂРµРґРµР»СЏРµС‚ СЃРєРѕСЂРѕСЃС‚СЊ. Р—РЅР°С‡РµРЅРёСЏ [0-6] = Fosc/[4,16,64,128,2,8,32]
+	#define SCLK_LCD_SET	PORTB |= _BV(PB5)
+	#define SDA_LCD_SET 	PORTB |= _BV(PB3)
+	#define CS_LCD_SET		PORTB |= _BV(PB2)
+	#define SCLK_LCD_RESET	PORTB &= ~_BV(PB5)
+	#define SDA_LCD_RESET	PORTB &= ~_BV(PB3)
+	#define CS_LCD_RESET	PORTB &= ~_BV(PB2)
+#endif
 
-// Макросы для работы с битами
+// РњР°РєСЂРѕСЃС‹ РґР»СЏ СЂР°Р±РѕС‚С‹ СЃ Р±РёС‚Р°РјРё
 #define ClearBit(reg, bit)       reg &= (~(1<<(bit)))
 #define SetBit(reg, bit)         reg |= (1<<(bit))	
 #define InvBit(reg, bit)         reg ^= 1<<bit	
@@ -41,24 +57,26 @@
 #define ON	1
 #define OFF	0
 
-// Разрешение дисплея в пикселях
-#define LCD_X_RES	96		// разрешение по горизонтали
-#define LCD_Y_RES	68		// разрешение по вертикали
+// Р Р°Р·СЂРµС€РµРЅРёРµ РґРёСЃРїР»РµСЏ РІ РїРёРєСЃРµР»СЏС…
+#define LCD_X_RES	96		// СЂР°Р·СЂРµС€РµРЅРёРµ РїРѕ РіРѕСЂРёР·РѕРЅС‚Р°Р»Рё
+#define LCD_Y_RES	68		// СЂР°Р·СЂРµС€РµРЅРёРµ РїРѕ РІРµСЂС‚РёРєР°Р»Рё
 
 //******************************************************************************
 class PCF8814 {
 	public:
-		PCF8814(byte _LCD_SCLK, byte _LCD_SDA, byte _LCD_CS, byte _LCD_RST);
+		PCF8814(uint8_t _LCD_SCLK, uint8_t _LCD_SDA, uint8_t _LCD_CS, uint8_t _LCD_RST);
 		void Init(void);
 		void Clear(void);
-		void Mirror(byte x, byte y);
-		void Contrast(byte c = 0x0D);
+		void Mirror(uint8_t x, uint8_t y);
+		void Contrast(uint8_t c = 0x0D);
 		void SendByte(char mode,unsigned char c);
 		void Putc(unsigned char c);
 		void PutcWide(unsigned char c);
 		void Print(const char * message);
 		void PrintF(char * message);
 		void PrintWide(char * message);
-		void GotoXY(byte x = 0,byte y = 0);
+		void GotoXY(uint8_t x = 0,uint8_t y = 0);
+	private:
+		uint8_t SPI_write(uint8_t cData);
 };
 #endif /* PCF8814_H */

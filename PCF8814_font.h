@@ -4,8 +4,8 @@
 //  Porting.....: Igorok107
 //  URL(s)......: http://digitalchip.ru
 //  Description.: Шрифт для LCD-контроллера
-//  Data........: 02.11.13
-//  Version.....: 2.1.0
+//  Data........: 07.11.13
+//  Version.....: 2.2.0
 //***************************************************************************
 #ifndef PCF8814_FONT_H
 #define PCF8814_FONT_H

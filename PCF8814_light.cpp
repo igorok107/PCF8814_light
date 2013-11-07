@@ -3,156 +3,174 @@
 //  Author(s)...: Chiper
 //  Porting.....: Igorok107
 //  URL(s)......: http://digitalchip.ru
-//  Description.: Драйвер LCD-контроллера от Nokia1100 с графическими функциями
-//  Data........: 02.11.13
-//  Version.....: 2.1.0
+//  Description.: Р”СЂР°Р№РІРµСЂ LCD-РєРѕРЅС‚СЂРѕР»Р»РµСЂР° РѕС‚ Nokia1100 Р±РµР· РіСЂР°С„РёС‡РµСЃРєРёС… С„СѓРЅРєС†РёР№
+//  Data........: 07.11.13
+//  Version.....: 2.2.0
 //***************************************************************************
 #include "PCF8814_light.h"
-#include "PCF8814_font.h" // Подключаем шрифт (будет размещен в программной памяти)
+#include "PCF8814_font.h" // РџРѕРґРєР»СЋС‡Р°РµРј С€СЂРёС„С‚ (Р±СѓРґРµС‚ СЂР°Р·РјРµС‰РµРЅ РІ РїСЂРѕРіСЂР°РјРјРЅРѕР№ РїР°РјСЏС‚Рё)
 
-// Порты к которым подключен дисплей в нумерации Arduino
-volatile byte LCD_SCLK, LCD_SDA, LCD_CS, LCD_RST;
+// РџРѕСЂС‚С‹ Рє РєРѕС‚РѕСЂС‹Рј РїРѕРґРєР»СЋС‡РµРЅ РґРёСЃРїР»РµР№ РІ РЅСѓРјРµСЂР°С†РёРё Arduino
+volatile uint8_t LCD_SCLK, LCD_SDA, LCD_CS, LCD_RST;
 
-PCF8814::PCF8814(byte _LCD_SCLK, byte _LCD_SDA, byte _LCD_CS, byte _LCD_RST)
+PCF8814::PCF8814(uint8_t _LCD_SCLK, uint8_t _LCD_SDA, uint8_t _LCD_CS, uint8_t _LCD_RST)
 {
-	// Инициализируем пины на вывод для работы с LCD-контроллером
+	// РРЅРёС†РёР°Р»РёР·РёСЂСѓРµРј РїРёРЅС‹ РЅР° РІС‹РІРѕРґ РґР»СЏ СЂР°Р±РѕС‚С‹ СЃ LCD-РєРѕРЅС‚СЂРѕР»Р»РµСЂРѕРј
+	pinMode(_LCD_RST,OUTPUT);
+	LCD_RST		=	_LCD_RST;	
+#ifdef SOFT_SPI
 	pinMode(_LCD_SCLK,OUTPUT);
 	pinMode(_LCD_SDA,OUTPUT);
-	pinMode(_LCD_CS,OUTPUT);
-	pinMode(_LCD_RST,OUTPUT);
-  
+	pinMode(_LCD_CS,OUTPUT);	
 	LCD_SCLK	=	_LCD_SCLK;
 	LCD_SDA		=	_LCD_SDA;
-	LCD_CS		=	_LCD_CS;
-	LCD_RST		=	_LCD_RST;
+	LCD_CS		=	_LCD_CS;	
+#else // РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ Р°РїРїР°СЂР°С‚РЅРѕРіРѕ SPI
+	pinMode(SCK, OUTPUT);
+	pinMode(MOSI, OUTPUT);	
+	pinMode(SS, OUTPUT);
+	SPCR = 0x10; //РћРїСЂРµРґРµР»СЏРµРј РєР°Рє MASTER.
+	SPCR = (SPCR & ~0x03) | (SPI_CLOCK_DIV & 0x03); //Р”РµР»РёС‚РµР»СЊ С‡Р°СЃС‚РѕС‚С‹
+	SPSR = (SPSR & ~1) | ((SPI_CLOCK_DIV >> 2) & 1);
+#endif
+	CS_LCD_SET;
+}
+
+uint8_t PCF8814::SPI_write(uint8_t cData) {
+		SPDR = cData;
+        while(!(SPSR & _BV(SPIF)));
+        return SPDR;    
 }
 
 //******************************************************************************
-// Передача байта (команды или данных) на LCD-контроллер
-//  mode: CMD_LCD_MODE - передаем команду
-//		  DATA_LCD_MODE - передаем данные
-//  c: значение передаваемого байта
+// РџРµСЂРµРґР°С‡Р° Р±Р°Р№С‚Р° (РєРѕРјР°РЅРґС‹ РёР»Рё РґР°РЅРЅС‹С…) РЅР° LCD-РєРѕРЅС‚СЂРѕР»Р»РµСЂ
+//  mode: CMD_LCD_MODE - РїРµСЂРµРґР°РµРј РєРѕРјР°РЅРґСѓ
+//		  DATA_LCD_MODE - РїРµСЂРµРґР°РµРј РґР°РЅРЅС‹Рµ
+//  c: Р·РЅР°С‡РµРЅРёРµ РїРµСЂРµРґР°РІР°РµРјРѕРіРѕ Р±Р°Р№С‚Р°
 void PCF8814::SendByte(char mode,unsigned char c)
 {
-  CS_LCD_RESET;
-  SCLK_LCD_RESET;
-  if (mode)
-  {	
-    SDA_LCD_SET;
-  }
-  else SDA_LCD_RESET;
-
-  SCLK_LCD_SET;
-
-  byte i;
-  for(i=0;i<8;i++)
-  {
-    delayMicroseconds(LCD_MIN_DELAY/2);
-    SCLK_LCD_RESET;
-
-    if(c & 0x80) SDA_LCD_SET;
-    else	     SDA_LCD_RESET;
-    delayMicroseconds(LCD_MIN_DELAY/2);
-    SCLK_LCD_SET;
-    c <<= 1;	
-  }	
-  CS_LCD_SET;
-  SCLK_LCD_RESET;
-  SDA_LCD_RESET;
+	#ifndef SOFT_SPI
+		SPCR &= ~_BV(SPIE);
+	#endif
+	CS_LCD_RESET;
+	(mode) ? SDA_LCD_SET : SDA_LCD_RESET;
+	SCLK_LCD_SET;
+	SCLK_LCD_RESET;
+	#ifdef SOFT_SPI
+		uint8_t i;
+		for(i=0;i<8;i++)
+		{
+			delayMicroseconds(LCD_MIN_DELAY/2);
+			SCLK_LCD_RESET;
+			if(c & 0x80) SDA_LCD_SET;
+			else	     SDA_LCD_RESET;
+			delayMicroseconds(LCD_MIN_DELAY/2);
+			SCLK_LCD_SET;
+			c <<= 1;
+		}
+		SCLK_LCD_RESET;
+	#else
+		SPCR |= _BV(SPE);
+		SPI_write(c);
+		SPCR &= ~_BV(SPE);	
+	#endif
+	CS_LCD_SET;
+	SDA_LCD_RESET;
 }
 
 //******************************************************************************
-// Инициализация контроллера
+// РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ РєРѕРЅС‚СЂРѕР»Р»РµСЂР°
 void PCF8814::Init(void)
 {
-  SCLK_LCD_RESET;
-  SDA_LCD_RESET;
-  CS_LCD_RESET;
-  RST_LCD_RESET;
-  delay(10);            // выжидем не менее 5мс для установки генератора(менее 5 мс может неработать)
-  RST_LCD_SET;
+	SCLK_LCD_RESET;
+	SDA_LCD_RESET;
+	CS_LCD_RESET;
+	RST_LCD_RESET;
+	delay(10);            // РІС‹Р¶РёРґРµРј РЅРµ РјРµРЅРµРµ 5РјСЃ РґР»СЏ СѓСЃС‚Р°РЅРѕРІРєРё РіРµРЅРµСЂР°С‚РѕСЂР°(РјРµРЅРµРµ 5 РјСЃ РјРѕР¶РµС‚ РЅРµСЂР°Р±РѕС‚Р°С‚СЊ)
+	RST_LCD_SET;
+	CS_LCD_SET;
 
-  SendByte(CMD_LCD_MODE,0xE2); // *** SOFTWARE RESET 
-  SendByte(CMD_LCD_MODE,0x3A); // *** Use internal oscillator
-  SendByte(CMD_LCD_MODE,0xEF); // *** FRAME FREQUENCY:
-  SendByte(CMD_LCD_MODE,0x04); // *** 80Hz
-  SendByte(CMD_LCD_MODE,0xD0); // *** 1:65 divider
-  SendByte(CMD_LCD_MODE,0x20); // Запись в регистр Vop 
-  SendByte(CMD_LCD_MODE,0x8D); // // Определяет контрастность [0x80-0x9F]
-  SendByte(CMD_LCD_MODE,0xA4); // all on/normal display
-  SendByte(CMD_LCD_MODE,0x2F); // Power control set(charge pump on/off)
-  SendByte(CMD_LCD_MODE,0x40); // set start row address = 0
-  SendByte(CMD_LCD_MODE,0xB0); // установить Y-адрес = 0
-  SendByte(CMD_LCD_MODE,0x10); // установить X-адрес, старшие 3 бита
-  SendByte(CMD_LCD_MODE,0x00);  // установить X-адрес, младшие 4 бита
+	SendByte(CMD_LCD_MODE,0xE2); // *** SOFTWARE RESET
+	SendByte(CMD_LCD_MODE,0x3A); // *** Use internal oscillator
+	SendByte(CMD_LCD_MODE,0xEF); // *** FRAME FREQUENCY:
+	SendByte(CMD_LCD_MODE,0x04); // *** 80Hz
+	SendByte(CMD_LCD_MODE,0xD0); // *** 1:65 divider
+	SendByte(CMD_LCD_MODE,0x20); // Р—Р°РїРёСЃСЊ РІ СЂРµРіРёСЃС‚СЂ Vop
+	SendByte(CMD_LCD_MODE,0x85); // РћРїСЂРµРґРµР»СЏРµС‚ РєРѕРЅС‚СЂР°СЃС‚РЅРѕСЃС‚СЊ
+	SendByte(CMD_LCD_MODE,0xA4); // all on/normal display
+	SendByte(CMD_LCD_MODE,0x2F); // Power control set(charge pump on/off)
+	SendByte(CMD_LCD_MODE,0x40); // set start row address = 0
+	SendByte(CMD_LCD_MODE,0xB0); // СѓСЃС‚Р°РЅРѕРІРёС‚СЊ Y-Р°РґСЂРµСЃ = 0
+	SendByte(CMD_LCD_MODE,0x10); // СѓСЃС‚Р°РЅРѕРІРёС‚СЊ X-Р°РґСЂРµСЃ, СЃС‚Р°СЂС€РёРµ 3 Р±РёС‚Р°
+	SendByte(CMD_LCD_MODE,0x00);  // СѓСЃС‚Р°РЅРѕРІРёС‚СЊ X-Р°РґСЂРµСЃ, РјР»Р°РґС€РёРµ 4 Р±РёС‚Р°
 
-  //SendByte(CMD_LCD_MODE,0xC8); // mirror Y axis (about X axis)
-  SendByte(CMD_LCD_MODE,0xA1); // Инвертировать экран по горизонтали
+	//SendByte(CMD_LCD_MODE,0xC8); // mirror Y axis (about X axis)
+	SendByte(CMD_LCD_MODE,0xA1); // РРЅРІРµСЂС‚РёСЂРѕРІР°С‚СЊ СЌРєСЂР°РЅ РїРѕ РіРѕСЂРёР·РѕРЅС‚Р°Р»Рё
 
-  SendByte(CMD_LCD_MODE,0xAC); // set initial row (R0) of the display
-  SendByte(CMD_LCD_MODE,0x07);
-  SendByte(CMD_LCD_MODE,0xAF); // экран вкл/выкл
+	SendByte(CMD_LCD_MODE,0xAC); // set initial row (R0) of the display
+	SendByte(CMD_LCD_MODE,0x07);
+	SendByte(CMD_LCD_MODE,0xAF); // СЌРєСЂР°РЅ РІРєР»/РІС‹РєР»
 
-  Clear(); // clear LCD
+	Clear(); // clear LCD
 }
 
 //******************************************************************************
-// Очистка экрана
+// РћС‡РёСЃС‚РєР° СЌРєСЂР°РЅР°
 void PCF8814::Clear(void)
 {
-  SendByte(CMD_LCD_MODE,0x40); // Y = 0
-  SendByte(CMD_LCD_MODE,0xB0);
-  SendByte(CMD_LCD_MODE,0x10); // X = 0
-  SendByte(CMD_LCD_MODE,0x00);
+	SendByte(CMD_LCD_MODE,0x40); // Y = 0
+	SendByte(CMD_LCD_MODE,0xB0);
+	SendByte(CMD_LCD_MODE,0x10); // X = 0
+	SendByte(CMD_LCD_MODE,0x00);
 
-  SendByte(CMD_LCD_MODE,0xAE); // disable display;
-  unsigned int i;
-  for(i=0;i<864;i++) SendByte(DATA_LCD_MODE,0x00);
-  SendByte(CMD_LCD_MODE,0xAF); // enable display;
+	SendByte(CMD_LCD_MODE,0xAE); // disable display;
+	unsigned int i;
+	for(i=0;i<864;i++) SendByte(DATA_LCD_MODE,0x00);
+	SendByte(CMD_LCD_MODE,0xAF); // enable display;
 }
 
 //******************************************************************************
-// Зеркалирование LCD-экрана по оси x и y соответственно.
-//  ON: Отразить
-//  OFF: Не отражатьж
-void PCF8814::Mirror(byte x, byte y)
+// Р—РµСЂРєР°Р»РёСЂРѕРІР°РЅРёРµ LCD-СЌРєСЂР°РЅР° РїРѕ РѕСЃРё x Рё y СЃРѕРѕС‚РІРµС‚СЃС‚РІРµРЅРЅРѕ.
+//  ON: РћС‚СЂР°Р·РёС‚СЊ
+//  OFF: РќРµ РѕС‚СЂР°Р¶Р°С‚СЊР¶
+void PCF8814::Mirror(uint8_t x, uint8_t y)
 {
 	SendByte(CMD_LCD_MODE,0xA0 | x);
 	SendByte(CMD_LCD_MODE,0xC0 | y<<3);
 }
 
 //******************************************************************************
-// Контрасиность LCD-экрана.
-//  с: принимает значения от 0 до 31.
-void PCF8814::Contrast(byte c)
+// РљРѕРЅС‚СЂР°СЃРёРЅРѕСЃС‚СЊ LCD-СЌРєСЂР°РЅР°.
+//  СЃ: РїСЂРёРЅРёРјР°РµС‚ Р·РЅР°С‡РµРЅРёСЏ РѕС‚ 0 РґРѕ 31.
+void PCF8814::Contrast(uint8_t c)
 {
 	if (c >= 0x20) c = 0x1F;
-		SendByte(CMD_LCD_MODE,0x20);
-		SendByte(CMD_LCD_MODE,0x80+c); // Определяет контрастность [0x80-0x9F]
+	SendByte(CMD_LCD_MODE,0x20);
+	SendByte(CMD_LCD_MODE,0x80+c); // РћРїСЂРµРґРµР»СЏРµС‚ РєРѕРЅС‚СЂР°СЃС‚РЅРѕСЃС‚СЊ [0x80-0x9F]
 }
 
 //******************************************************************************
-// Вывод символа на LCD-экран в текущее место
-//  c: код символа
+// Р’С‹РІРѕРґ СЃРёРјРІРѕР»Р° РЅР° LCD-СЌРєСЂР°РЅ РІ С‚РµРєСѓС‰РµРµ РјРµСЃС‚Рѕ
+//  c: РєРѕРґ СЃРёРјРІРѕР»Р°
 void PCF8814::Putc(unsigned char c)
 {
-  if (c < 208){
-    byte i;
-    for ( i = 0; i < 5; i++ )
-      SendByte(DATA_LCD_MODE,pgm_read_byte(&(lcd_Font[c-32][i])));
+	if (c < 208){
+		uint8_t i;
+		for ( i = 0; i < 5; i++ )
+		SendByte(DATA_LCD_MODE,pgm_read_byte(&(lcd_Font[c-32][i])));
 
-    SendByte(DATA_LCD_MODE,0x00); // Зазор между символами по горизонтали в 1 пиксель
-  }
+		SendByte(DATA_LCD_MODE,0x00); // Р—Р°Р·РѕСЂ РјРµР¶РґСѓ СЃРёРјРІРѕР»Р°РјРё РїРѕ РіРѕСЂРёР·РѕРЅС‚Р°Р»Рё РІ 1 РїРёРєСЃРµР»СЊ
+	}
 }
 
 //******************************************************************************
-// Вывод широкого символа на LCD-экран в текущее место
-//  c: код символа
+// Р’С‹РІРѕРґ С€РёСЂРѕРєРѕРіРѕ СЃРёРјРІРѕР»Р° РЅР° LCD-СЌРєСЂР°РЅ РІ С‚РµРєСѓС‰РµРµ РјРµСЃС‚Рѕ
+//  c: РєРѕРґ СЃРёРјРІРѕР»Р°
 void PCF8814::PutcWide(unsigned char c)
 {
-  if (c < 208){ 	// Урезаем первый байт в кодировке UTF8
+  if (c < 208){ 	// РЈСЂРµР·Р°РµРј РїРµСЂРІС‹Р№ Р±Р°Р№С‚ РІ РєРѕРґРёСЂРѕРІРєРµ UTF8
 
-    byte i;
+    uint8_t i;
     for ( i = 0; i < 5; i++ )
     {
       unsigned char glyph = pgm_read_byte(&(lcd_Font[c-32][i]));
@@ -160,37 +178,37 @@ void PCF8814::PutcWide(unsigned char c)
       SendByte(DATA_LCD_MODE,glyph);
     }
 
-    SendByte(DATA_LCD_MODE,0x00); // Зазор между символами по горизонтали в 1 пиксель
-    //	SendByte(DATA_LCD_MODE,0x00); // Можно сделать две линии
+    SendByte(DATA_LCD_MODE,0x00); // Р—Р°Р·РѕСЂ РјРµР¶РґСѓ СЃРёРјРІРѕР»Р°РјРё РїРѕ РіРѕСЂРёР·РѕРЅС‚Р°Р»Рё РІ 1 РїРёРєСЃРµР»СЊ
+    //	SendByte(DATA_LCD_MODE,0x00); // РњРѕР¶РЅРѕ СЃРґРµР»Р°С‚СЊ РґРІРµ Р»РёРЅРёРё
   }
 }
 
 //******************************************************************************
-// Вывод строки символов на LCD-экран в текущее место. Если строка выходит
-// за экран в текущей строке, то остаток переносится на следующую строку.
-//  message: указатель на строку символов. 0x00 - признак конца строки.
+// Р’С‹РІРѕРґ СЃС‚СЂРѕРєРё СЃРёРјРІРѕР»РѕРІ РЅР° LCD-СЌРєСЂР°РЅ РІ С‚РµРєСѓС‰РµРµ РјРµСЃС‚Рѕ. Р•СЃР»Рё СЃС‚СЂРѕРєР° РІС‹С…РѕРґРёС‚
+// Р·Р° СЌРєСЂР°РЅ РІ С‚РµРєСѓС‰РµР№ СЃС‚СЂРѕРєРµ, С‚Рѕ РѕСЃС‚Р°С‚РѕРє РїРµСЂРµРЅРѕСЃРёС‚СЃСЏ РЅР° СЃР»РµРґСѓСЋС‰СѓСЋ СЃС‚СЂРѕРєСѓ.
+//  message: СѓРєР°Р·Р°С‚РµР»СЊ РЅР° СЃС‚СЂРѕРєСѓ СЃРёРјРІРѕР»РѕРІ. 0x00 - РїСЂРёР·РЅР°Рє РєРѕРЅС†Р° СЃС‚СЂРѕРєРё.
 void PCF8814::Print(const char * message)
 {
-  while (*message) Putc(*message++); // Конец строки обозначен нулем
+  while (*message) Putc(*message++); // РљРѕРЅРµС† СЃС‚СЂРѕРєРё РѕР±РѕР·РЅР°С‡РµРЅ РЅСѓР»РµРј
 }
 
 //******************************************************************************
-// Вывод строки символов двойной ширины на LCD-экран в текущее место
-// из оперативной памяти. Если строка выходит за экран в текущей строке, то остаток
-// переносится на следующую строку.
-//  message: указатель на строку символов в оперативной памяти. 0x00 - признак конца строки.
+// Р’С‹РІРѕРґ СЃС‚СЂРѕРєРё СЃРёРјРІРѕР»РѕРІ РґРІРѕР№РЅРѕР№ С€РёСЂРёРЅС‹ РЅР° LCD-СЌРєСЂР°РЅ РІ С‚РµРєСѓС‰РµРµ РјРµСЃС‚Рѕ
+// РёР· РѕРїРµСЂР°С‚РёРІРЅРѕР№ РїР°РјСЏС‚Рё. Р•СЃР»Рё СЃС‚СЂРѕРєР° РІС‹С…РѕРґРёС‚ Р·Р° СЌРєСЂР°РЅ РІ С‚РµРєСѓС‰РµР№ СЃС‚СЂРѕРєРµ, С‚Рѕ РѕСЃС‚Р°С‚РѕРє
+// РїРµСЂРµРЅРѕСЃРёС‚СЃСЏ РЅР° СЃР»РµРґСѓСЋС‰СѓСЋ СЃС‚СЂРѕРєСѓ.
+//  message: СѓРєР°Р·Р°С‚РµР»СЊ РЅР° СЃС‚СЂРѕРєСѓ СЃРёРјРІРѕР»РѕРІ РІ РѕРїРµСЂР°С‚РёРІРЅРѕР№ РїР°РјСЏС‚Рё. 0x00 - РїСЂРёР·РЅР°Рє РєРѕРЅС†Р° СЃС‚СЂРѕРєРё.
 void PCF8814::PrintWide(char * message)
 {
-  while (*message) PutcWide(*message++);  // Конец строки обозначен нулем
+  while (*message) PutcWide(*message++);  // РљРѕРЅРµС† СЃС‚СЂРѕРєРё РѕР±РѕР·РЅР°С‡РµРЅ РЅСѓР»РµРј
 }
 
 //******************************************************************************
-// Вывод строки символов на LCD-экран NOKIA 1100 в текущее место из программной памяти.
-// Если строка выходит за экран в текущей строке, то остаток переносится на следующую строку.
-//  message: указатель на строку символов в программной памяти. 0x00 - признак конца строки.
+// Р’С‹РІРѕРґ СЃС‚СЂРѕРєРё СЃРёРјРІРѕР»РѕРІ РЅР° LCD-СЌРєСЂР°РЅ NOKIA 1100 РІ С‚РµРєСѓС‰РµРµ РјРµСЃС‚Рѕ РёР· РїСЂРѕРіСЂР°РјРјРЅРѕР№ РїР°РјСЏС‚Рё.
+// Р•СЃР»Рё СЃС‚СЂРѕРєР° РІС‹С…РѕРґРёС‚ Р·Р° СЌРєСЂР°РЅ РІ С‚РµРєСѓС‰РµР№ СЃС‚СЂРѕРєРµ, С‚Рѕ РѕСЃС‚Р°С‚РѕРє РїРµСЂРµРЅРѕСЃРёС‚СЃСЏ РЅР° СЃР»РµРґСѓСЋС‰СѓСЋ СЃС‚СЂРѕРєСѓ.
+//  message: СѓРєР°Р·Р°С‚РµР»СЊ РЅР° СЃС‚СЂРѕРєСѓ СЃРёРјРІРѕР»РѕРІ РІ РїСЂРѕРіСЂР°РјРјРЅРѕР№ РїР°РјСЏС‚Рё. 0x00 - РїСЂРёР·РЅР°Рє РєРѕРЅС†Р° СЃС‚СЂРѕРєРё.
 void PCF8814::PrintF(char * message)
 {
-  byte data;
+  uint8_t data;
   while (data=pgm_read_byte(message), data)
   { 
     Putc(data);
@@ -199,15 +217,15 @@ void PCF8814::PrintF(char * message)
 }
 
 //******************************************************************************
-// Устанавливает курсор в необходимое положение. Отсчет начинается в верхнем 
-// левом углу. По горизонтали 16 знакомест, по вертикали - 8
+// РЈСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ РєСѓСЂСЃРѕСЂ РІ РЅРµРѕР±С…РѕРґРёРјРѕРµ РїРѕР»РѕР¶РµРЅРёРµ. РћС‚СЃС‡РµС‚ РЅР°С‡РёРЅР°РµС‚СЃСЏ РІ РІРµСЂС…РЅРµРј 
+// Р»РµРІРѕРј СѓРіР»Сѓ. РџРѕ РіРѕСЂРёР·РѕРЅС‚Р°Р»Рё 16 Р·РЅР°РєРѕРјРµСЃС‚, РїРѕ РІРµСЂС‚РёРєР°Р»Рё - 8
 //  x: 0..15
 //  y: 0..7    
-void PCF8814::GotoXY(byte x,byte y)
+void PCF8814::GotoXY(uint8_t x,uint8_t y)
 {
-  x=x*6;	// Переходим от координаты в знакоместах к координатам в пикселях
+  x=x*6;	// РџРµСЂРµС…РѕРґРёРј РѕС‚ РєРѕРѕСЂРґРёРЅР°С‚С‹ РІ Р·РЅР°РєРѕРјРµСЃС‚Р°С… Рє РєРѕРѕСЂРґРёРЅР°С‚Р°Рј РІ РїРёРєСЃРµР»СЏС…
 
-  SendByte(CMD_LCD_MODE,(0xB0|(y&0x0F)));      // установка адреса по Y: 0100 yyyy         
-  SendByte(CMD_LCD_MODE,(0x00|(x&0x0F)));      // установка адреса по X: 0000 xxxx - биты (x3 x2 x1 x0)
-  SendByte(CMD_LCD_MODE,(0x10|((x>>4)&0x07))); // установка адреса по X: 0010 0xxx - биты (x6 x5 x4)
+  SendByte(CMD_LCD_MODE,(0xB0|(y&0x0F)));      // СѓСЃС‚Р°РЅРѕРІРєР° Р°РґСЂРµСЃР° РїРѕ Y: 0100 yyyy         
+  SendByte(CMD_LCD_MODE,(0x00|(x&0x0F)));      // СѓСЃС‚Р°РЅРѕРІРєР° Р°РґСЂРµСЃР° РїРѕ X: 0000 xxxx - Р±РёС‚С‹ (x3 x2 x1 x0)
+  SendByte(CMD_LCD_MODE,(0x10|((x>>4)&0x07))); // СѓСЃС‚Р°РЅРѕРІРєР° Р°РґСЂРµСЃР° РїРѕ X: 0010 0xxx - Р±РёС‚С‹ (x6 x5 x4)
 }

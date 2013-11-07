@@ -6,7 +6,7 @@
 # Class
 #######################################
 
-PCF8814_light	KEYWORD1
+PCF8814	KEYWORD1
 
 #######################################
 # Methods and Functions (KEYWORD2)
